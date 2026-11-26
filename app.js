@@ -16,6 +16,7 @@ const WD_FULL = ['неділя', 'понеділок', 'вівторок', 'се
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const MEAL_NAMES = { breakfast: 'Сніданок', lunch: 'Обід', dinner: 'Вечеря' };
 const EXP_CATS = ['Продукти', 'Транспорт', 'Житло', 'Комуналка', 'Кафе', 'Одяг', 'Здоровʼя', 'Розваги', 'Подарунки', 'Тварини', 'Інше'];
+const COLORS = ['#e5484d', '#f59e0b', '#eab308', '#2fa84f', '#3478f6', '#8b5cf6', '#ec4899'];
 const INC_CATS = ['Зарплата', 'Замовлення', 'Підробіток', 'Подарунок', 'Інше'];
 
 // ---------- helpers ----------
@@ -90,13 +91,15 @@ const S = {
   dayOpen: false,
   mealSub: 'plan',
   recipeFilter: 'all',
+  newColor: '',
   shopWeek: 0,
   settings: null, goals: null, custom: null, plan: null
 };
 const DEFAULT_SETTINGS = {
   stepsGoal: 8000,
   dayRate: 0, workDays: 0, extraIncome: 0, savePercent: 10,
-  people: 1, exclude: [], kcalTarget: 2000
+  people: 1, exclude: [], kcalTarget: 2000,
+  colorByTitle: {}
 };
 const saveSettings = () => Store.set('settings', S.settings);
 
@@ -150,6 +153,16 @@ function monthNav() {
 }
 
 // ---------- КАЛЕНДАР (місяць) ----------
+// фон клітинки дня: колір справи (або смужки, якщо кольорів кілька)
+function cellBg(cols) {
+  if (!cols.length) return '';
+  if (cols.length === 1) return `background:${cols[0]}55;box-shadow:inset 0 0 0 2px ${cols[0]}`;
+  const step = 100 / cols.length;
+  return 'background:linear-gradient(to bottom,' + cols.map((c, i) => `${c}55 ${i * step}%,${c}55 ${(i + 1) * step}%`).join(',') + ')';
+}
+function colorPicker() {
+  return `<div class="colors">${['', ...COLORS].map(c => `<button class="cpick ${S.newColor === c ? 'sel' : ''}" data-c="${c}" style="background:${c || 'var(--bg2)'}" onclick="App.pickColor('${c}')">${c ? '' : '∅'}</button>`).join('')}</div>`;
+}
 async function viewCalendar() {
   const { y, m } = S;
   const mk = `${y}_${pad(m + 1)}`;
@@ -169,7 +182,8 @@ async function viewCalendar() {
     totalTasks += list.length; doneTasks += done;
     const dm = mon.filter(x => x.d === pad(d));
     const wd = new Date(y, m, d).getDay();
-    cells += `<button class="cell ${ds === t ? 'today' : ''} ${wd === 0 || wd === 6 ? 'weekend' : ''}" onclick="App.openDay('${ds}')">
+    const cols = [...new Set(list.slice().sort((a, b) => (a.from || '99') < (b.from || '99') ? -1 : 1).map(x => x.color).filter(Boolean))];
+    cells += `<button class="cell ${ds === t ? 'today' : ''} ${wd === 0 || wd === 6 ? 'weekend' : ''}" style="${cellBg(cols)}" onclick="App.openDay('${ds}')">
       <span class="dn">${d}</span>
       ${list.length ? `<span class="badge ${done === list.length ? 'done' : ''}">${done}/${list.length}</span>` : ''}
       <span class="dots">${dm.some(x => x.type === 'in') ? '<i class="in"></i>' : ''}${dm.some(x => x.type === 'out') ? '<i class="out"></i>' : ''}${planMealsFor(ds) ? '<i class="meal"></i>' : ''}</span>
@@ -202,6 +216,7 @@ async function viewDay() {
   const taskHtml = tasks.length ? tasks.map(x => `
     <div class="item ${x.done ? 'done' : ''}">
       <input type="checkbox" ${x.done ? 'checked' : ''} onchange="App.toggleTask('${x.id}')">
+      <button class="cdot" title="Змінити колір" style="background:${x.color || 'var(--bg2)'}" onclick="App.cycleColor('${x.id}')"></button>
       <span class="time">${x.from ? esc(x.from) + (x.to ? '–' + esc(x.to) : '') : 'без часу'}</span>
       <span class="grow title">${esc(x.title)}</span>
       <button class="icon-btn" onclick="App.delTask('${x.id}')">🗑</button>
@@ -227,6 +242,7 @@ async function viewDay() {
     <label>Нова справа</label>
     <div class="row"><input type="time" id="t-from"><input type="time" id="t-to"></div>
     <div class="row" style="margin-top:6px"><input id="t-title" placeholder="Що треба зробити?"></div>
+    <label>Колір у календарі</label>${colorPicker()}
     <button class="btn full" onclick="App.addTask()">+ Додати справу</button>
   </div>
   <div class="card"><h3>Гроші за день</h3>${moneyHtml}
@@ -562,12 +578,31 @@ const App = {
     const title = val('t-title');
     if (!title) return toast('Напиши, що треба зробити');
     const list = await dayTasks(S.date);
-    list.push({ id: uid(), from: val('t-from'), to: val('t-to'), title, done: false });
+    const key = title.toLowerCase();
+    const map = S.settings.colorByTitle || (S.settings.colorByTitle = {});
+    const color = S.newColor || map[key] || '';
+    if (S.newColor) { map[key] = S.newColor; saveSettings(); }
+    list.push({ id: uid(), from: val('t-from'), to: val('t-to'), title, done: false, color });
+    S.newColor = '';
     await setDayTasks(S.date, list); haptic(); render();
   },
   async toggleTask(id) {
     const list = await dayTasks(S.date);
     const x = list.find(t => t.id === id); if (x) x.done = !x.done;
+    await setDayTasks(S.date, list); haptic(); render();
+  },
+  pickColor(c) {
+    S.newColor = c;
+    document.querySelectorAll('.cpick').forEach(b => b.classList.toggle('sel', b.dataset.c === c));
+  },
+  async cycleColor(id) {
+    const list = await dayTasks(S.date);
+    const x = list.find(t => t.id === id); if (!x) return;
+    const opts = ['', ...COLORS];
+    x.color = opts[(opts.indexOf(x.color || '') + 1) % opts.length];
+    const map = S.settings.colorByTitle || (S.settings.colorByTitle = {});
+    if (x.color) map[x.title.toLowerCase()] = x.color; else delete map[x.title.toLowerCase()];
+    saveSettings();
     await setDayTasks(S.date, list); haptic(); render();
   },
   async delTask(id) {
