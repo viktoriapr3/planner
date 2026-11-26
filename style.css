@@ -136,6 +136,40 @@ button { font-family: inherit; font-size: 15px; cursor: pointer; }
 .cpick.sel { border-color: var(--text); transform: scale(1.1); }
 .cdot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(128,128,128,.35); padding: 0; flex: 0 0 auto; }
 
+/* шапка */
+#top { justify-content: space-between; }
+.gear { background: var(--bg); border: 0; border-radius: 10px; width: 36px; height: 34px; font-size: 18px; }
+.btn.light2 { background: var(--bg); color: var(--text); }
+#tabs button span { font-size: 9px; }
+
+/* банер навантаження дня */
+.banner { background: var(--bg); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; font-weight: 600; line-height: 1.35; }
+
+/* меню по днях */
+.meal-slot { display: flex; gap: 8px; padding: 6px 0; align-items: flex-start; }
+.meal-slot .lbl { font-size: 12px; color: var(--hint); width: 70px; flex: 0 0 auto; padding-top: 7px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--bg2); border-radius: 16px; padding: 5px 4px 5px 10px; font-size: 14px; }
+.chip a { color: var(--link); text-decoration: none; }
+.chip button { border: 0; background: none; color: var(--hint); font-size: 16px; padding: 0 6px; }
+.dish-select { width: auto; max-width: 100%; padding: 6px 10px; border-radius: 16px; font-size: 14px; color: var(--link); }
+
+/* нотатки */
+.folders { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.folder { background: var(--bg); border: 0; border-radius: var(--radius); padding: 16px 12px; text-align: left; display: flex; flex-direction: column; gap: 4px; color: var(--text); }
+.folder .femoji { font-size: 28px; }
+.item.note .title { white-space: normal; cursor: pointer; }
+.moods { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.moods button { font-size: 24px; background: var(--bg2); border: 0; border-radius: 10px; padding: 4px 8px; }
+
+/* стікери */
+.sticker { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 60; pointer-events: auto; background: rgba(0,0,0,.15); }
+.sticker.hidden { display: none; }
+.sticker-card { background: var(--bg); color: var(--text); border-radius: 22px; padding: 22px 26px; font-size: 22px; font-weight: 800; text-align: center; max-width: 82%; box-shadow: 0 10px 40px rgba(0,0,0,.25); line-height: 1.3; }
+.sticker-card.big { font-size: 26px; border: 4px double var(--orange); background: linear-gradient(160deg, #fff8e1, #ffe9b0); color: #5b3a00; }
+.pop { animation: pop .45s cubic-bezier(.2,1.6,.4,1); }
+@keyframes pop { from { transform: scale(.3) rotate(-8deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+
 /* широкі екрани (комп'ютер): тримаємо ширину як у телефона */
 body { max-width: 560px; margin: 0 auto; }
 #tabs { max-width: 560px; margin: 0 auto; }
