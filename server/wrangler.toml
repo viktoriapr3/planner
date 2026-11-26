@@ -1,0 +1,17 @@
+# Налаштування сервера для автоматичного деплою з GitHub
+name = "planner-api"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+keep_vars = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "planner"
+database_id = "e8cb4779-8c57-4cd5-a33f-24d445ac0971"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+WEBAPP_URL = "https://viktoriapr3.github.io/planner/"
