@@ -103,19 +103,37 @@ function tomorrowKyiv() {
   return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate(), wd: t.getUTCDay() };
 }
 
+// ---------- навантаження дня (як у застосунку) ----------
+const toMin = t => { if (!t) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+function taskHours(t) {
+  const a = toMin(t.from), b = toMin(t.to);
+  if (a !== null && b !== null) { let d = b - a; if (d <= 0) d += 1440; return d / 60; }
+  if (/робот|зміна|змін/i.test(t.title)) return 8;
+  if (/(^|\s)пар[иаи]($|\s)|навчан|універ|лекці/i.test(t.title)) return 4;
+  return a !== null ? 1 : 0.5;
+}
+function dayLoad(tasks) {
+  const n = tasks.length;
+  if (!n) return { lvl: 0, h: 0 };
+  const h = tasks.reduce((s, t) => s + taskHours(t), 0);
+  return { lvl: (h >= 11 || n >= 10) ? 4 : (h >= 7 || n >= 7) ? 3 : (h >= 4 || n >= 4) ? 2 : 1, h };
+}
+
 // ---------- текст нагадування ----------
 async function buildReminder(env, space) {
   const t = tomorrowKyiv();
   const mk = `${t.y}_${pad(t.m)}`, dd = pad(t.d);
-  const data = await getSpaceData(env, space, ['tasks_' + mk, 'meals_' + mk, 'settings']);
+  const data = await getSpaceData(env, space, ['tasks_' + mk, 'meals_' + mk, 'settings', 'debts']);
+  const tDate = `${t.y}-${pad(t.m)}-${dd}`;
+  const debts = (data.debts || []).filter(d => d.due === tDate && d.paid < d.amount);
   const tasks = ((data['tasks_' + mk] || {})[dd] || []).slice().sort((a, b) => ((a.from || '99') < (b.from || '99') ? -1 : 1));
   const meals = (data['meals_' + mk] || {})[dd] || {};
   const mode = (data.settings || {}).stickers === 'normal' ? 'normal' : 'spicy';
   const all = [...(meals.b || []), ...(meals.l || []), ...(meals.d || [])];
-  if (!tasks.length && !all.length) return null;
+  if (!tasks.length && !all.length && !debts.length) return null;
 
-  const n = tasks.length;
-  const phrase = LOAD[mode][n === 0 ? 0 : n <= 3 ? 1 : n <= 6 ? 2 : n <= 9 ? 3 : 4];
+  const load = dayLoad(tasks);
+  const phrase = LOAD[mode][load.lvl] + (load.h >= 1 ? ` · зайнято ~${Math.round(load.h)} год` : '');
   let text = `🗓 <b>На завтра, ${t.d} ${MONTHS_GEN[t.m - 1]} (${WD_FULL[t.wd]}), у вас заплановано:</b>\n`;
   if ((data.settings || {}).stickers !== 'off') text += `<i>${escHtml(phrase)}</i>\n`;
   if (tasks.length) {
@@ -128,6 +146,9 @@ async function buildReminder(env, space) {
     }
     const frozen = [...new Set(all.filter(i => i.p).map(i => i.n))];
     if (frozen.length) text += `\n🧊 Дістань заздалегідь заготовки для: ${frozen.map(escHtml).join(', ')}\n`;
+  }
+  if (debts.length) {
+    text += '\n💸 <b>Завтра термін боргу:</b>\n' + debts.map(d => `• ${d.dir === 'owe' ? 'віддати' : 'має повернути'} ${escHtml(d.who)} — ${Math.round((d.amount - d.paid) * 100) / 100} ₴`).join('\n') + '\n';
   }
   return text;
 }

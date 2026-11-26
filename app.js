@@ -226,9 +226,25 @@ const dishItem = r => (r.prep ? { id: r.id, n: r.name, p: 1 } : { id: r.id, n: r
 const dayKcal = d => [...d.b, ...d.l, ...d.d].reduce((s, it) => s + ((recipeById(it.id) || {}).kcal || 0), 0);
 
 // ---------- стікери ----------
-function loadPhrase(n) {
-  const i = n === 0 ? 0 : n <= 3 ? 1 : n <= 6 ? 2 : n <= 9 ? 3 : 4;
-  return stickerSet().load[i];
+// скільки годин займає справа: за часом «з–до»; якщо часу немає — за змістом
+function taskHours(t) {
+  const a = toMin(t.from), b = toMin(t.to);
+  if (a !== null && b !== null) { let d = b - a; if (d <= 0) d += 1440; return d / 60; }
+  if (/робот|зміна|змін/i.test(t.title)) return 8;
+  if (/(^|\s)пар[иаи]($|\s)|навчан|універ|лекці/i.test(t.title)) return 4;
+  return a !== null ? 1 : 0.5;
+}
+function dayLoad(tasks) {
+  const n = tasks.length;
+  if (!n) return { lvl: 0, h: 0 };
+  const h = tasks.reduce((s, t) => s + taskHours(t), 0);
+  const lvl = (h >= 11 || n >= 10) ? 4 : (h >= 7 || n >= 7) ? 3 : (h >= 4 || n >= 4) ? 2 : 1;
+  return { lvl, h };
+}
+function loadPhrase(tasks) {
+  const { lvl, h } = dayLoad(tasks);
+  const txt = stickerSet().load[lvl];
+  return h >= 1 ? `${txt} · зайнято ~${Math.round(h)} год` : txt;
 }
 let stickerTimer = null;
 function showSticker(text, big) {
@@ -353,7 +369,7 @@ async function viewDay() {
     <button class="btn light2" onclick="App.closeDay()">Місяць</button>
     <button class="btn light2" onclick="App.shiftDay(1)">${shortDate(addDays(ds, 1))} ›</button>
   </div>
-  ${stickerMode() !== 'off' ? `<div class="banner">${esc(loadPhrase(tasks.length))}</div>` : ''}
+  ${stickerMode() !== 'off' ? `<div class="banner">${esc(loadPhrase(tasks))}</div>` : ''}
   <div class="card"><h3>Графік дня</h3>${taskHtml}
     <label>Нова справа</label>
     <div class="row"><input type="time" id="t-from"><input type="time" id="t-to"></div>
@@ -451,11 +467,55 @@ async function viewMoney() {
   </div>
   <div class="card"><h3>Цілі — на що відкладаю</h3>${goalsHtml}
     <label>Нова ціль</label>
-    <input id="g-name" placeholder="Напр. відпустка, ноутбук">
-    <div class="row" style="margin-top:6px"><input type="number" inputmode="decimal" id="g-target" placeholder="Сума, ₴"><input type="date" id="g-deadline"></div>
+    <input id="g-name" placeholder="На що відкладаю (напр. відпустка, ноутбук)">
+    <div class="row">
+      <div><label>Скільки треба, ₴</label><input type="number" inputmode="decimal" id="g-target" placeholder="20000"></div>
+      <div><label>Зібрати до дати (необовʼязково)</label><input type="date" id="g-deadline"></div>
+    </div>
     <button class="btn full" onclick="App.addGoal()">+ Додати ціль</button>
   </div>
+  ${await debtsCard()}
   <div class="card"><h3>Усі записи за ${MONTHS[S.m].toLowerCase()}</h3>${listHtml}</div>`;
+}
+async function debtsCard() {
+  const debts = await Store.get('debts', []);
+  const open = debts.filter(d => d.paid < d.amount);
+  const closed = debts.filter(d => d.paid >= d.amount);
+  const iOwe = open.filter(d => d.dir === 'owe').reduce((s, d) => s + d.amount - d.paid, 0);
+  const owedMe = open.filter(d => d.dir === 'lent').reduce((s, d) => s + d.amount - d.paid, 0);
+  const t = todayStr();
+  const row = d => {
+    const left = d.amount - d.paid;
+    const pct = Math.min(100, d.paid / d.amount * 100);
+    let due = '';
+    if (d.due && left > 0) {
+      const n = diffDays(t, d.due);
+      due = n < 0 ? `<span class="tag warn">прострочено на ${-n} дн.</span>` : n === 0 ? '<span class="tag warn">сьогодні!</span>' : `<span class="tag ${n <= 3 ? 'warn' : ''}">до ${shortDate(d.due)}</span>`;
+    }
+    return `<div style="margin-bottom:14px">
+      <div class="between"><b>${d.dir === 'owe' ? '🔴 Я винна' : '🟢 Мені винні'}: ${esc(d.who)}</b><button class="icon-btn" onclick="App.delDebt('${d.id}')">🗑</button></div>
+      <div class="between small"><span>${left > 0 ? `лишилось ${money(left)} з ${money(d.amount)}` : `✅ повернуто ${money(d.amount)}`}</span>${due}</div>
+      ${d.note ? `<p class="small muted" style="margin:4px 0">${esc(d.note)}</p>` : ''}
+      <div class="bar ${d.dir === 'owe' ? 'red' : 'green'}"><div style="width:${pct}%"></div></div>
+      ${left > 0 ? `<div class="row" style="margin-top:8px"><input type="number" inputmode="decimal" id="dp-${d.id}" placeholder="Сума, ₴"><button class="btn auto" onclick="App.debtPay('${d.id}')">${d.dir === 'owe' ? 'Я віддала' : 'Мені віддали'}</button></div>` : ''}
+    </div>`;
+  };
+  return `<div class="card"><h3>💸 Борги</h3>
+    <div class="stats" style="grid-template-columns:1fr 1fr">
+      <div class="stat"><b class="red">${money(iOwe)}</b><span>я винна</span></div>
+      <div class="stat"><b class="green">${money(owedMe)}</b><span>мені винні</span></div>
+    </div>
+    <div style="margin-top:12px">${open.length ? open.sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(row).join('') : '<p class="muted small">Боргів немає 🎉</p>'}</div>
+    <label>Новий борг</label>
+    <div class="row"><select id="db-dir"><option value="owe">Я винна</option><option value="lent">Мені винні</option></select><input id="db-who" placeholder="Кому / хто"></div>
+    <div class="row">
+      <div><label>Сума, ₴</label><input type="number" inputmode="decimal" id="db-amount" placeholder="1000"></div>
+      <div><label>Повернути до (необовʼязково)</label><input type="date" id="db-due"></div>
+    </div>
+    <input id="db-note" style="margin-top:6px" placeholder="Коментар (за що, як віддавати…)">
+    <button class="btn full" onclick="App.addDebt()">+ Додати борг</button>
+    ${closed.length ? `<details style="margin-top:12px"><summary class="small muted">Закриті борги (${closed.length})</summary>${closed.map(row).join('')}</details>` : ''}
+  </div>`;
 }
 function calcOut(forecast, toSave, factSave, inc) {
   return `<div class="stats">
@@ -696,6 +756,10 @@ async function viewTips() {
     const [topC, topV] = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
     if (topV / exp > 0.4) tips.push({ c: '', h: `${Math.round(topV / exp * 100)}% витрат цього місяця йде на «${esc(topC)}». Подивись, чи можна тут зекономити.` });
   }
+  (await Store.get('debts', [])).filter(d => d.due && d.paid < d.amount && diffDays(t, d.due) <= 3).forEach(d => {
+    const n = diffDays(t, d.due);
+    tips.push({ c: 'warn', h: `💸 ${d.dir === 'owe' ? 'Ти винна' : 'Тобі винні'} ${esc(d.who)} ${money(d.amount - d.paid)} — ${n < 0 ? 'термін минув' : n === 0 ? 'термін сьогодні' : 'до ' + shortDate(d.due)}.` });
+  });
   S.goals.filter(g => g.deadline && g.saved < g.target && diffDays(t, g.deadline) > 0).forEach(g => {
     tips.push({ c: '', h: `Щоб встигнути на «${esc(g.name)}», відкладай ${money((g.target - g.saved) / Math.max(diffDays(t, g.deadline) / 7, 1))} на тиждень.` });
   });
@@ -733,10 +797,16 @@ async function viewSettings() {
       </div>
       <div class="card"><h3>👫 Спільний планер</h3>
         ${shared ? `<p class="small">Планер ведуть разом: <b>${me.members.map(m => esc(m.name || 'без імені')).join(', ')}</b></p>` : '<p class="small muted">Зараз планер бачиш тільки ти.</p>'}
-        ${isOwner ? `<p class="small muted">Щоб дати доступ (напр. чоловіку або дружині), створи запрошення і надішли посилання. Людина відкриє його, натисне Start — і побачить твій планер. Ви обоє зможете все змінювати.</p>
+        ${isOwner ? `<div class="tip small" style="line-height:1.5"><b>Як дати доступ іншій людині (напр. чоловіку):</b><br>
+            1. Натисни <b>«Створити запрошення»</b> нижче.<br>
+            2. Натисни <b>«Поділитися посиланням»</b> і вибери людину в Telegram (або продиктуй їй код).<br>
+            3. Людина відкриває посилання — у неї відкривається цей бот — і тисне <b>Start</b>. Бот напише «💛 Готово!».<br>
+            4. Людина тисне <b>«📅 Відкрити планувальник»</b> — і бачить ваш спільний планер. Ви обоє можете все змінювати.<br>
+            <span class="muted">Якщо посилання не відкривається: людина сама знаходить бота, відкриває планувальник → ⚙️ → «Маєш код запрошення?» → вводить код.<br>
+            Одне запрошення — для однієї людини, діє 3 дні. Для кількох людей створи кілька запрошень. Нагадування кожен налаштовує собі сам.</span></div>
           <button class="btn full" onclick="App.invite()">Створити запрошення</button><div id="invite-out"></div>
           ${shared ? `<label>Прибрати доступ</label>${me.members.filter(m => String(m.id) !== String(me.userId)).map(m => `<div class="item"><span class="grow">${esc(m.name || m.id)}</span><button class="btn light" onclick="App.kick('${m.id}')">Прибрати</button></div>`).join('')}` : ''}`
-        : `<p class="small muted">Ти в спільному планері. Твій особистий планер збережений і повернеться, якщо вийдеш.</p><button class="btn light full" onclick="App.leave()">Вийти зі спільного планера</button>`}
+        : `<p class="small muted">Ти в спільному планері: бачиш і змінюєш те саме, що й власник. Нових людей запрошує власник планера. Твій особистий планер збережений і повернеться, якщо вийдеш.</p><button class="btn light full" onclick="App.leave()">Вийти зі спільного планера</button>`}
         <label>Маєш код запрошення?</label>
         <div class="row"><input id="join-code" placeholder="Код"><button class="btn auto" onclick="App.join()">Приєднатися</button></div>
       </div>`;
@@ -871,6 +941,26 @@ const App = {
     if (v > 0) showSticker('💰 +' + money(v) + ' у скарбничку!');
     render();
   },
+  async addDebt() {
+    const who = val('db-who'), amount = num(val('db-amount'));
+    if (!who || amount <= 0) return toast('Вкажи, кому/хто, і суму');
+    Store.set('debts', [...(await Store.get('debts', [])), { id: uid(), dir: val('db-dir'), who, amount, paid: 0, due: val('db-due'), note: val('db-note'), created: todayStr() }]);
+    haptic(); render();
+  },
+  async debtPay(id) {
+    const v = num(val('dp-' + id)); if (!v) return;
+    let closedNow = null;
+    const list = (await Store.get('debts', [])).map(d => {
+      if (d.id !== id) return d;
+      const paid = Math.min(d.amount, d.paid + v);
+      if (paid >= d.amount) closedNow = d;
+      return { ...d, paid };
+    });
+    Store.set('debts', list);
+    if (closedNow) showSticker(closedNow.dir === 'owe' ? '🕊 Борг закрито! Вільна людина' : '💰 Тобі все повернули!', true);
+    render();
+  },
+  async delDebt(id) { Store.set('debts', (await Store.get('debts', [])).filter(d => d.id !== id)); render(); },
   delGoal(id) { S.goals = S.goals.filter(x => x.id !== id); Store.set('goals', S.goals); render(); },
 
   // кроки
