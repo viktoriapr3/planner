@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Планувальник</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="top"></header>
+  <main id="view"><p class="muted center">Завантаження…</p></main>
+
+  <nav id="tabs">
+    <button data-tab="calendar" onclick="App.tab('calendar')">📅<span>Календар</span></button>
+    <button data-tab="money" onclick="App.tab('money')">💰<span>Гроші</span></button>
+    <button data-tab="meals" onclick="App.tab('meals')">🍲<span>Харчування</span></button>
+    <button data-tab="health" onclick="App.tab('health')">👟<span>Кроки</span></button>
+    <button data-tab="tips" onclick="App.tab('tips')">💡<span>Поради</span></button>
+  </nav>
+
+  <div id="modal" class="modal hidden" onclick="if(event.target===this)App.closeModal()">
+    <div class="modal-box">
+      <button class="modal-close" onclick="App.closeModal()">✕</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="recipes.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
